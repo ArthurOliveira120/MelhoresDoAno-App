@@ -16,26 +16,43 @@ export function Host() {
   //Buscar estado da sessão ao carregar
   useEffect(() => {
     loadSessionAndVotes();
+  }, []);
 
+  useEffect(() => {
     const voteChannel = supabase
       .channel("realtime-votes")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "votes" },
-        () => updateVotes()
+        async () => {
+          const state = await getSessionState();
+          if (!state) return;
+          updateVotes(state.current_category_id);
+        }
+      )
+      .subscribe();
+
+    const participantChannel = supabase
+      .channel("realtime-participants")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "participants" },
+        async () => {
+          const state = await getSessionState();
+          if (!state) return;
+          updateVotes(state.current_category_id);
+        }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(voteChannel);
+      supabase.removeChannel(participantChannel);
     };
-  }, []);
+  }, [category]);
 
   async function loadSessionAndVotes() {
-    const { data: state } = await supabase
-      .from("session_state")
-      .select("*")
-      .single();
+    const state = await getSessionState();
 
     if (!state) return;
 
@@ -57,6 +74,11 @@ export function Host() {
     updateVotes(state.current_category_id);
   }
 
+  async function getSessionState() {
+    const { data } = await supabase.from("session_state").select("*").single();
+    return data;
+  }
+
   async function updateVotes(categoryId?: number) {
     const id = categoryId || category?.id;
 
@@ -72,7 +94,7 @@ export function Host() {
     setCanAdvance((votes?.length || 0) === (participants?.length || 0));
   }
 
-  async function advanceCategory() {
+  async function advanceCategory(force = false) {
     const { data: allCategories } = await supabase
       .from("categories")
       .select("*");
@@ -82,7 +104,7 @@ export function Host() {
     const index = allCategories.findIndex((c) => c.id === category?.id);
     const next = allCategories[index + 1];
 
-    if (next) {
+    if (next || force) {
       await supabase
         .from("session_state")
         .update({
@@ -106,6 +128,11 @@ export function Host() {
     loadSessionAndVotes();
   }
 
+  async function clearParticipants() {
+    await supabase.from("votes").delete().neq("id", 0);
+    await supabase.from("participants").delete().neq("id", 0);
+  }
+
   return (
     <div className={styles.container}>
       <h1 className={styles.mainTitle}>Host - Current Category</h1>
@@ -115,7 +142,7 @@ export function Host() {
           <h2 className={styles.categoryTitle}>{category.title}</h2>
           <ul>
             {options.map((opt) => (
-              <li key={opt.id}>* {opt.name}</li>
+              <li key={opt.id}>{opt.name}</li>
             ))}
           </ul>
           <p>
@@ -124,12 +151,13 @@ export function Host() {
           <button
             className={styles.nextButton}
             disabled={!canAdvance}
-            onClick={advanceCategory}
+            onClick={() => advanceCategory()}
           >
             Next category
           </button>
-
           <button onClick={resetCategoryId}>reset</button>
+          <button onClick={() => advanceCategory(true)}>force advance</button>
+          <button onClick={clearParticipants}>clear participants</button>
         </>
       )}
     </div>
