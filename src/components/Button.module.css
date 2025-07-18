@@ -1,0 +1,21 @@
+.button {
+  width: fit-content;
+  height: 2rem;
+  padding: 0 1rem;
+  font-size: 1rem;
+  border-radius: 0.25rem;
+  color: var(--primary);
+  border: none;
+  background-color: var(--accent-gold);
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(201, 167, 67, 0.25);
+  transition: all 0.3s ease;
+}
+
+.button:hover,
+.button:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 0 10px var(--accent-gold);
+  transform: scale(1.02);
+  color: var(--primary-dark)
+}

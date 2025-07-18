@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 
 import type { Category, Option } from "../types";
 
+import { Header } from "../components/Header";
+import { RadioOption } from "../components/RadioOption";
+import { Button } from "../components/Button";
+
 import { supabase } from "../../utils/supabase";
 
 export function Vote() {
@@ -82,7 +86,7 @@ export function Vote() {
     setOptions(optionsData || []);
   }
 
-  async function submiteVote() {
+  async function submitVote() {
     if (hasVoted || !selectedOptionId || !category || participantId === null)
       return;
 
@@ -102,44 +106,36 @@ export function Vote() {
 
   return (
     <div className={styles.container}>
-      <h2>{category?.title || "Carregando..."}</h2>
-      <h6>Vote:</h6>
-      <form>
+      <Header title={category?.title || "Carregando..."} />
+      <form className={styles.form}>
         {!waitingNext && (
-          <ul>
+          <div className={styles.optionsContainer}>
             {options.map((option) => (
-              <li key={option.id}>
-                <label>
-                  <input
-                    type="radio"
-                    name="voteOption"
-                    value={option.id}
-                    disabled={hasVoted}
-                    checked={selectedOptionId === option.id}
-                    onChange={() => setSelectedOptionId(option.id)}
-                  />
-                  {option.name}
-                </label>
-              </li>
+              <RadioOption
+                key={option.id}
+                id={option.id}
+                label={option.name}
+                name="voteOption"
+                disabled={hasVoted}
+                checked={selectedOptionId === option.id}
+                onChange={() => setSelectedOptionId(option.id)}
+              />
             ))}
-          </ul>
+          </div>
         )}
 
         {waitingNext && (
-          <div className={styles.container}>
+          <div className={styles.waitingBox}>
             <h2>Seu voto foi registrado</h2>
             <p>Aguardando todos terminarem de votar</p>
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={submiteVote}
-          disabled={hasVoted || !selectedOptionId}
-          className={styles.submitButton}
-        >
-          Enviar voto
-        </button>
+        <Button
+          onClick={submitVote}
+          disabled={!selectedOptionId || hasVoted}
+          message="Enviar voto"
+        />
       </form>
     </div>
   );

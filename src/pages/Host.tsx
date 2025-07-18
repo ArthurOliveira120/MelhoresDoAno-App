@@ -2,6 +2,8 @@ import styles from "./Host.module.css";
 
 import type { Option, Category } from "../types";
 
+import { Button } from "../components/Button";
+
 import { useEffect, useState } from "react";
 
 import { supabase } from "../../utils/supabase";
@@ -148,16 +150,16 @@ export function Host() {
           <p>
             votes: {votesCount} / {totalParticipants}
           </p>
-          <button
-            className={styles.nextButton}
-            disabled={!canAdvance}
-            onClick={() => advanceCategory()}
-          >
-            Next category
-          </button>
-          <button onClick={resetCategoryId}>reset</button>
-          <button onClick={() => advanceCategory(true)}>force advance</button>
-          <button onClick={clearParticipants}>clear participants</button>
+          <div className={styles.hostButtons}>
+            <Button
+              message="Next"
+              disabled={!canAdvance}
+              onClick={advanceCategory}
+            />
+            <Button message="Reset" onClick={resetCategoryId} />
+            <Button message="Force advance" onClick={() => advanceCategory(true)} />
+            <Button message="Clear" onClick={clearParticipants}/>
+          </div>
         </>
       )}
     </div>

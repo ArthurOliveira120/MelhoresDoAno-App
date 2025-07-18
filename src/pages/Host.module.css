@@ -1,0 +1,7 @@
+.hostButtons {
+    display: flex;
+}
+
+.hostButtons button {
+    margin: 1rem;
+}

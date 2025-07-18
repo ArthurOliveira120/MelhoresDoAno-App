@@ -1,0 +1,18 @@
+.header {
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.75rem;
+}
+
+.header h1 {
+    text-shadow: 1px 3px 4px var(--shadow-text);
+    text-align: center;
+}
+
+.imgLogo {
+    width: 8rem;
+    height: 8rem;
+}

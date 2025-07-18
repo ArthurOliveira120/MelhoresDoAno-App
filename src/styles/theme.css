@@ -1,0 +1,43 @@
+:root {
+  --primary: #0b132bff; /* Oxford Blue - cor principal */
+  --primary-light: #2c3a67ff; /* versão clara */
+  --primary-dark: #070d1aff; /* versão escura */
+
+  --primary-bg: linear-gradient(
+    315deg,
+    var(--primary-light) 0%,
+    var(--primary) 15%,
+    var(--primary-dark) 50%,
+    var(--primary) 75%,
+    var(--primary-light) 100%
+  );
+  --secondary-bg: linear-gradient(
+    var(--primary) 0%,
+    var(--primary-light) 50%,
+    var(--primary-dark) 100%
+  );
+
+  --secondary: #1c2541ff;
+  --secondary-light: #495480ff;
+  --secondary-dark: #121a2bff;
+
+  --surface: #1c2541ff; /* containers, cards ou áreas internas */
+  --surface-dark: #121a2b;
+
+  --text-light: #e0e1dd;
+  --text-muted: #a7a9ac;
+
+  --accent-gold: #c9a743; /* chamar atenção com botões, bordas ou ícones*/
+  --accent-gold-dark: #b08d27;
+
+  --button-text: rgba(0, 0, 0, 0.8);
+  --button-disabled: #6c757d;
+  --alert-error: #b02a37;
+
+  --border-color: #1c2a3a;
+
+  --shadow-box: rgba(0, 0, 0, 0.6);
+  --shadow-gold: 0 3px 12px rgba(212, 175, 55, 0.4);
+  --shadow-gold-hover: 0 4px 10px rgba(212, 175, 55, 0.6);
+  --shadow-text: rgba(212, 175, 55, 0.3);
+}

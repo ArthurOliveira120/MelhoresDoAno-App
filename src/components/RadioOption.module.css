@@ -1,0 +1,47 @@
+.label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.label input[type="radio"] {
+  display: none;
+}
+
+.customRadio {
+  padding: 0.75rem 1.5rem;
+  border: 2px solid var(--accent-gold);
+  border-radius: 50px;
+  color: var(--primary-contrast-light);
+  font-weight: 500;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  position: relative;
+  background: linear-gradient(
+    145deg,
+    rgba(2, 17, 27, 0.85),
+    rgba(1, 10, 20, 0.95)
+  );
+  box-shadow: 0 0 4px rgba(201, 167, 67, 0.25);
+}
+
+.label:hover .customRadio {
+  box-shadow: 0 0 10px var(--accent-gold);
+  transform: scale(1.02);
+}
+
+.label input[type="radio"]:checked + .customRadio {
+  background: var(--accent-gold);
+  color: var(--primary-dark);
+  font-weight: bold;
+  box-shadow: 0 0 20px var(--accent-gold);
+  border-color: var(--accent-gold);
+}
+
+.label input[type="radio"]:disabled + .customRadio {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
