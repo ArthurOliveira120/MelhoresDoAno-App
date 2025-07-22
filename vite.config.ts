@@ -6,8 +6,5 @@ export default defineConfig({
   base: '/', // garante que funcione no deploy
   build: {
     outDir: 'dist',
-  },
-  server: {
-    historyApiFallback: true,
   }
 });
