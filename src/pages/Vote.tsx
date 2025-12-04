@@ -2,6 +2,8 @@ import styles from "./Vote.module.css";
 
 import { useState, useEffect } from "react";
 
+import { useNavigate } from "react-router-dom";
+
 import type { Category, Option } from "../types";
 
 import { Header } from "../components/Header";
@@ -11,18 +13,22 @@ import { Button } from "../components/Button";
 import { supabase } from "../../utils/supabase";
 
 export function Vote() {
+  const navigate = useNavigate();
   const [participantId, setParticipantId] = useState<number | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
   const [options, setOptions] = useState<Option[]>([]);
   const [selectedOptionId, setSelectedOptionId] = useState<number | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [waitingNext, setWaintingNext] = useState(false);
+  const [votesCount, setVotesCount] = useState(0);
+  const [totalParticipants, setTotalParticipants] = useState(0);
 
   useEffect(() => {
     const storedName = localStorage.getItem("participant_name");
 
     if (!storedName) {
       alert("Seu ID não foi encontrado, volte e coloque seu nome de novo");
+      navigate("/");
       return;
     }
 
@@ -35,20 +41,31 @@ export function Vote() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "session_state" },
         () => {
-          if (hasVoted) {
-            setHasVoted(false);
-            setSelectedOptionId(null);
-            setWaintingNext(false);
-            fetchCategoryAndOptions();
-          }
+          setHasVoted(false);
+          setSelectedOptionId(null);
+          setWaintingNext(false);
+          fetchCategoryAndOptions();
+          fetchTotalVotesAndParticipants();
         }
       )
       .subscribe();
 
+    const voteChannel = supabase
+      .channel("realtime-votes")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "votes" },
+        () => {
+          fetchTotalVotesAndParticipants();
+        }
+      );
+
     return () => {
       supabase.removeChannel(categoryChannel);
+      supabase.removeChannel(voteChannel);
     };
-  }, [hasVoted]);
+  }, []);
+
 
   async function fetchParticipantId(participantName: string) {
     const { data: participant } = await supabase
@@ -86,6 +103,27 @@ export function Vote() {
     setOptions(optionsData || []);
   }
 
+  async function fetchTotalVotesAndParticipants() {
+    const { data: state } = await supabase
+      .from("session_state")
+      .select("*")
+      .single();
+
+    if (!state) return;
+
+    const [{ data: voteData }, { data: totalParticipantsData }] =
+      await Promise.all([
+        supabase
+          .from("votes")
+          .select("*")
+          .eq("category_id", state.current_category_id),
+        supabase.from("participants").select("*"),
+      ]);
+
+    setVotesCount(voteData?.length || 0);
+    setTotalParticipants(totalParticipantsData?.length || 0);
+  }
+
   async function submitVote() {
     if (hasVoted || !selectedOptionId || !category || participantId === null)
       return;
@@ -106,37 +144,50 @@ export function Vote() {
 
   return (
     <div className={styles.container}>
-      <Header title={category?.title || "Carregando..."} />
-      <form className={styles.form}>
-        {!waitingNext && (
-          <div className={styles.optionsContainer}>
-            {options.map((option) => (
-              <RadioOption
-                key={option.id}
-                id={option.id}
-                label={option.name}
-                name="voteOption"
-                disabled={hasVoted}
-                checked={selectedOptionId === option.id}
-                onChange={() => setSelectedOptionId(option.id)}
-              />
-            ))}
-          </div>
-        )}
+      {category?.id === 0 && (
+        <div>
+          <h1>esperando começar</h1>
+        </div>
+      )}
 
-        {waitingNext && (
-          <div className={styles.waitingBox}>
-            <h2>Seu voto foi registrado</h2>
-            <p>Aguardando todos terminarem de votar</p>
-          </div>
-        )}
+      {category?.id !== 0 && (
+        <>
+          <Header title={category?.title || "Carregando..."} />
+          <div className={styles.form}>
+            {!waitingNext && (
+              <div className={styles.optionsContainer}>
+                {options.map((option) => (
+                  <RadioOption
+                    key={option.id}
+                    id={option.id}
+                    label={option.name}
+                    name="voteOption"
+                    disabled={hasVoted}
+                    checked={selectedOptionId === option.id}
+                    onChange={() => setSelectedOptionId(option.id)}
+                  />
+                ))}
+              </div>
+            )}
 
-        <Button
-          onClick={submitVote}
-          disabled={!selectedOptionId || hasVoted}
-          message="Enviar voto"
-        />
-      </form>
+            {waitingNext && (
+              <div className={styles.waitingBox}>
+                <h2>Seu voto foi registrado</h2>
+                <p>Aguardando todos terminarem de votar...</p>
+                <p>
+                  ({votesCount} / {totalParticipants})
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={submitVote}
+              disabled={!selectedOptionId || hasVoted}
+              message="Enviar voto"
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

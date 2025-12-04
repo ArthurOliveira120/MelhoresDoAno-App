@@ -1,22 +1,26 @@
+.label input[type="radio"] {
+  display: none;
+}
+
 .label {
   display: flex;
   align-items: center;
+  width: 100%;
   margin-bottom: 1rem;
   cursor: pointer;
   user-select: none;
 }
 
-.label input[type="radio"] {
-  display: none;
-}
-
 .customRadio {
-  padding: 0.75rem 1.5rem;
+  flex: 1;
+  text-align: center;
+  padding: 1rem;
+  min-height: 3rem;
   border: 2px solid var(--accent-gold);
   border-radius: 50px;
   color: var(--primary-contrast-light);
   font-weight: 500;
-  font-size: 1rem;
+  font-size: 1.1rem;
   transition: all 0.3s ease;
   position: relative;
   background: linear-gradient(
@@ -26,6 +30,7 @@
   );
   box-shadow: 0 0 4px rgba(201, 167, 67, 0.25);
 }
+
 
 .label:hover .customRadio {
   box-shadow: 0 0 10px var(--accent-gold);

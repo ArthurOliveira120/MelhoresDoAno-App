@@ -99,18 +99,29 @@ export function Host() {
   async function advanceCategory(force = false) {
     const { data: allCategories } = await supabase
       .from("categories")
-      .select("*");
+      .select("*")
+      .order("id", { ascending: true });
 
     if (!allCategories) return;
 
     const index = allCategories.findIndex((c) => c.id === category?.id);
     const next = allCategories[index + 1];
 
-    if (next || force) {
+    if (next) {
       await supabase
         .from("session_state")
         .update({
           current_category_id: next.id,
+          locked: false,
+        })
+        .eq("id", 1);
+
+      loadSessionAndVotes();
+    } else if (force && allCategories.length > 0) {
+      await supabase
+        .from("session_state")
+        .update({
+          current_category_id: allCategories[0].id,
           locked: false,
         })
         .eq("id", 1);
@@ -123,7 +134,7 @@ export function Host() {
     await supabase
       .from("session_state")
       .update({
-        current_category_id: 1,
+        current_category_id: 0,
         locked: false,
       })
       .eq("id", 1);
@@ -137,11 +148,9 @@ export function Host() {
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.mainTitle}>Host - Current Category</h1>
-
       {category && (
         <>
-          <h2 className={styles.categoryTitle}>{category.title}</h2>
+          <h1>{category.title}</h1>
           <ul>
             {options.map((opt) => (
               <li key={opt.id}>{opt.name}</li>
@@ -157,8 +166,11 @@ export function Host() {
               onClick={advanceCategory}
             />
             <Button message="Reset" onClick={resetCategoryId} />
-            <Button message="Force advance" onClick={() => advanceCategory(true)} />
-            <Button message="Clear" onClick={clearParticipants}/>
+            <Button
+              message="Force advance"
+              onClick={() => advanceCategory(true)}
+            />
+            <Button message="Clear" onClick={clearParticipants} />
           </div>
         </>
       )}
