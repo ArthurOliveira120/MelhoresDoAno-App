@@ -1,149 +1,230 @@
 import styles from "./Host.module.css";
 
-import type { Option, Category } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../utils/supabase";
 
+import type { Category, Option } from "../types";
 import { Button } from "../components/Button";
 
-import { useEffect, useState } from "react";
+type SessionStateRow = {
+  id: number;
+  current_category_id: number;
+  locked: boolean;
+  phase: "lobby" | "voting" | "results" | string;
+  updated_at?: string;
+};
 
-import { supabase } from "../../utils/supabase";
+type VoteProgress = {
+  voted_count: number;
+  total_participants: number;
+};
 
 export function Host() {
+  const [state, setState] = useState<SessionStateRow | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
   const [options, setOptions] = useState<Option[]>([]);
-  const [votesCount, setVotesCount] = useState(0);
-  const [totalParticipants, setTotalParticipants] = useState(0);
-  const [canAdvance, setCanAdvance] = useState(false);
+  const [progress, setProgress] = useState<VoteProgress>({
+    voted_count: 0,
+    total_participants: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  //Buscar estado da sessão ao carregar
-  useEffect(() => {
-    loadSessionAndVotes();
-  }, []);
+  const canAdvance = useMemo(() => {
+    // Você pode decidir se permite avanço só quando estiver em "voting"
+    if (!state) return false;
+    if (state.phase !== "voting") return false;
+
+    return progress.total_participants > 0 &&
+      progress.voted_count === progress.total_participants;
+  }, [state, progress]);
 
   useEffect(() => {
-    const voteChannel = supabase
-      .channel("realtime-votes")
+    loadAll();
+
+    // ✅ O Host agora ouve só o "session_state"
+    const sessionChannel = supabase
+      .channel("realtime-session-state")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "votes" },
-        async () => {
-          const state = await getSessionState();
-          if (!state) return;
-          updateVotes(state.current_category_id);
-        }
-      )
-      .subscribe();
-
-    const participantChannel = supabase
-      .channel("realtime-participants")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "participants" },
-        async () => {
-          const state = await getSessionState();
-          if (!state) return;
-          updateVotes(state.current_category_id);
+        { event: "UPDATE", schema: "public", table: "session_state" },
+        () => {
+          loadAll();
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(voteChannel);
-      supabase.removeChannel(participantChannel);
+      supabase.removeChannel(sessionChannel);
     };
-  }, [category]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  async function loadSessionAndVotes() {
-    const state = await getSessionState();
+  async function loadAll() {
+    setLoading(true);
 
-    if (!state) return;
+    const s = await getSessionState();
+    if (!s) {
+      setLoading(false);
+      return;
+    }
 
-    const [{ data: categoryData }, { data: optionsData }] = await Promise.all([
-      supabase
-        .from("categories")
-        .select("*")
-        .eq("id", state.current_category_id)
-        .single(),
-      supabase
-        .from("options")
-        .select("*")
-        .eq("category_id", state.current_category_id),
+    setState(s);
+
+    await Promise.all([
+      loadCategoryAndOptions(s.current_category_id),
+      loadVoteProgress(s.current_category_id),
     ]);
 
-    setCategory(categoryData);
-    setOptions(optionsData || []);
-
-    updateVotes(state.current_category_id);
+    setLoading(false);
   }
 
   async function getSessionState() {
-    const { data } = await supabase.from("session_state").select("*").single();
-    return data;
+    const { data, error } = await supabase
+      .from("session_state")
+      .select("id, current_category_id, locked, phase, updated_at")
+      .single();
+
+    if (error) {
+      console.error("Erro ao buscar session_state:", error);
+      return null;
+    }
+
+    return data as SessionStateRow;
   }
 
-  async function updateVotes(categoryId?: number) {
-    const id = categoryId || category?.id;
+  async function loadCategoryAndOptions(categoryId: number) {
+    const [{ data: categoryData, error: catErr }, { data: optionsData, error: optErr }] =
+      await Promise.all([
+        supabase.from("categories").select("*").eq("id", categoryId).single(),
+        supabase.from("options").select("*").eq("category_id", categoryId),
+      ]);
 
-    if (!id) return;
+    if (catErr) console.error("Erro ao buscar categoria:", catErr);
+    if (optErr) console.error("Erro ao buscar opções:", optErr);
 
-    const [{ data: votes }, { data: participants }] = await Promise.all([
-      supabase.from("votes").select("*").eq("category_id", id),
-      supabase.from("participants").select("*"),
-    ]);
+    setCategory((categoryData as Category) ?? null);
+    setOptions((optionsData as Option[]) ?? []);
+  }
 
-    setVotesCount(votes?.length || 0);
-    setTotalParticipants(participants?.length || 0);
-    setCanAdvance((votes?.length || 0) === (participants?.length || 0));
+  // ✅ Sem SELECT em votes/participants (agora é RPC)
+  async function loadVoteProgress(categoryId: number) {
+    const { data, error } = await supabase.rpc("get_vote_progress", {
+      category_id_param: categoryId,
+    });
+
+    if (error) {
+      console.error("Erro ao buscar progresso:", error);
+      // Se der erro, zera para não permitir avanço indevido
+      setProgress({ voted_count: 0, total_participants: 0 });
+      return;
+    }
+
+    // Esperado: { voted_count: number, total_participants: number }
+    setProgress(data as VoteProgress);
   }
 
   async function advanceCategory(force = false) {
-    const { data: allCategories } = await supabase
-      .from("categories")
-      .select("*")
-      .order("id", { ascending: true });
+    try {
+      setActionLoading(true);
 
-    if (!allCategories) return;
+      const { error } = await supabase.rpc("advance_category", { force });
 
-    const index = allCategories.findIndex((c) => c.id === category?.id);
-    const next = allCategories[index + 1];
+      if (error) throw error;
 
-    if (next) {
-      await supabase
-        .from("session_state")
-        .update({
-          current_category_id: next.id,
-          locked: false,
-        })
-        .eq("id", 1);
-
-      loadSessionAndVotes();
-    } else if (force && allCategories.length > 0) {
-      await supabase
-        .from("session_state")
-        .update({
-          current_category_id: allCategories[0].id,
-          locked: false,
-        })
-        .eq("id", 1);
-
-      loadSessionAndVotes();
+      // loadAll() será chamado pelo realtime do session_state
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao avançar categoria");
+    } finally {
+      setActionLoading(false);
     }
   }
 
-  async function resetCategoryId() {
-    await supabase
-      .from("session_state")
-      .update({
-        current_category_id: 0,
-        locked: false,
-      })
-      .eq("id", 1);
-    loadSessionAndVotes();
+  async function goToResults() {
+    // opcional: muda a fase para results sem trocar categoria
+    if (!state) return;
+
+    try {
+      setActionLoading(true);
+
+      const { error } = await supabase
+        .from("session_state")
+        .update({ phase: "results", locked: true })
+        .eq("id", state.id);
+
+      if (error) throw error;
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao ir para resultados");
+    } finally {
+      setActionLoading(false);
+    }
   }
 
-  async function clearParticipants() {
-    await supabase.from("votes").delete().neq("id", 0);
-    await supabase.from("participants").delete().neq("id", 0);
+  async function goToVoting() {
+    if (!state) return;
+
+    try {
+      setActionLoading(true);
+
+      const { error } = await supabase
+        .from("session_state")
+        .update({ phase: "voting", locked: false })
+        .eq("id", state.id);
+
+      if (error) throw error;
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao abrir votação");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function resetToLobby() {
+    if (!state) return;
+
+    try {
+      setActionLoading(true);
+
+      const { error } = await supabase
+        .from("session_state")
+        .update({ current_category_id: 0, phase: "lobby", locked: false })
+        .eq("id", state.id);
+
+      if (error) throw error;
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao resetar");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function clearAll() {
+    // ✅ em vez de deletar votes/participants do client, vira RPC admin
+    const ok = confirm("Tem certeza que deseja apagar votos e participantes?");
+    if (!ok) return;
+
+    try {
+      setActionLoading(true);
+
+      const { error } = await supabase.rpc("admin_clear_all");
+
+      if (error) throw error;
+
+      // também volta pra lobby
+      await resetToLobby();
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao limpar dados");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className={styles.container}>
+        <p>Carregando...</p>
+      </div>
+    );
   }
 
   return (
@@ -151,26 +232,53 @@ export function Host() {
       {category && (
         <>
           <h1>{category.title}</h1>
+
           <ul>
             {options.map((opt) => (
               <li key={opt.id}>{opt.name}</li>
             ))}
           </ul>
+
+          {/* ✅ Host pode ver o progresso, mas via RPC (não expondo votes no client) */}
           <p>
-            votes: {votesCount} / {totalParticipants}
+            Progresso: {progress.voted_count} / {progress.total_participants}
           </p>
+
+          <p>
+            Estado: <strong>{state?.phase}</strong> {state?.locked ? "(locked)" : ""}
+          </p>
+
           <div className={styles.hostButtons}>
             <Button
-              message="Next"
-              disabled={!canAdvance}
-              onClick={advanceCategory}
+              message="Abrir votação"
+              onClick={goToVoting}
+              disabled={actionLoading || state?.phase === "voting"}
             />
-            <Button message="Reset" onClick={resetCategoryId} />
+            <Button
+              message="Mostrar resultados"
+              onClick={goToResults}
+              disabled={actionLoading || state?.phase === "results"}
+            />
+            <Button
+              message="Next"
+              onClick={() => advanceCategory(false)}
+              disabled={actionLoading || !canAdvance}
+            />
             <Button
               message="Force advance"
               onClick={() => advanceCategory(true)}
+              disabled={actionLoading}
             />
-            <Button message="Clear" onClick={clearParticipants} />
+            <Button
+              message="Reset (Lobby)"
+              onClick={resetToLobby}
+              disabled={actionLoading}
+            />
+            <Button
+              message="Clear"
+              onClick={clearAll}
+              disabled={actionLoading}
+            />
           </div>
         </>
       )}

@@ -1,90 +1,130 @@
 import styles from "./Results.module.css";
+import { useEffect, useState } from "react";
+import { supabase } from "../utils/supabase";
 
-import { useState, useEffect } from "react";
-import type { Winner } from "../types";
-import { supabase } from "../../utils/supabase";
+type CategoryRow = {
+  id: number;
+  title: string;
+};
+
+type Top3Row = {
+  option_id: number;
+  option_name: string;
+  total_votes: number; // vem da RPC, mas a UI não precisa mostrar
+};
+
+type WinnerRow = {
+  category_id: number;
+  category_title: string;
+  option_id: number;
+  option_name: string;
+};
 
 export function Results() {
-  const [winners, setWinners] = useState<Winner[]>([]);
+  const [winners, setWinners] = useState<WinnerRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchWinners() {
-      setLoading(true);
+    fetchWinners();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      const { data: votes, error: votesError } = await supabase
-        .from("votes")
-        .select("category_id, option_id");
+  async function fetchWinners() {
+    setLoading(true);
+    setErrorMessage(null);
 
-      const { data: options, error: optionsError } = await supabase
-        .from("options")
-        .select("id, category_id, name");
-
+    try {
+      // 1) Busca categorias
       const { data: categories, error: categoriesError } = await supabase
         .from("categories")
-        .select("id, title");
+        .select("id, title")
+        .order("id", { ascending: true });
 
-      if (votesError || optionsError || categoriesError) {
-        console.error(
-          "Erro ao buscar dados: ",
-          votesError || optionsError || categoriesError
-        );
-        setLoading(false);
+      if (categoriesError) throw categoriesError;
+
+      const categoryList = (categories as CategoryRow[]) ?? [];
+
+      if (categoryList.length === 0) {
+        setWinners([]);
         return;
       }
 
-      const voteMap = new Map<string, number>();
-      votes?.forEach((vote) => {
-        const key = `${vote.category_id}-${vote.option_id}`;
-        voteMap.set(key, (voteMap.get(key) || 0) + 1);
-      });
+      // 2) Para cada categoria, chama a RPC get_top3 e pega o 1º lugar
+      const winnerPromises = categoryList.map(async (cat) => {
+        const { data, error } = await supabase.rpc("get_top3", {
+          category_id_param: cat.id,
+        });
 
-      const categoryWinners = new Map<number, Winner>();
-      voteMap.forEach((count, key) => {
-        const [categoryIdStr, optionIdStr] = key.split("-");
-        const category_id = Number(categoryIdStr);
-        const option_id = Number(optionIdStr);
-
-        const option = options?.find((opt) => opt.id === option_id);
-        const category = categories?.find((cat) => cat.id === category_id);
-        if (!option) return;
-
-        const current = categoryWinners.get(category_id);
-        if (!current || count > current.vote_count) {
-          categoryWinners.set(category_id, {
-            category_id,
-            category_title: category?.title,
-            option_id,
-            option_name: option.name,
-            vote_count: count,
-          });
+        if (error) {
+          console.error(`Erro no get_top3 (category ${cat.id}):`, error);
+          return null;
         }
+
+        const top3 = (data as Top3Row[]) ?? [];
+        const first = top3[0];
+
+        if (!first) return null;
+
+        const winner: WinnerRow = {
+          category_id: cat.id,
+          category_title: cat.title,
+          option_id: first.option_id,
+          option_name: first.option_name,
+        };
+
+        return winner;
       });
 
-      setWinners(Array.from(categoryWinners.values()));
+      const resolved = await Promise.all(winnerPromises);
+
+      // filtra nulos e mantém ordem por categoria
+      setWinners(resolved.filter(Boolean) as WinnerRow[]);
+    } catch (err: any) {
+      console.error("Erro ao buscar vencedores:", err);
+      setErrorMessage(err?.message ?? "Erro ao buscar resultados");
+      setWinners([]);
+    } finally {
       setLoading(false);
     }
-
-    fetchWinners();
-  }, []);
+  }
 
   return (
     <div className={styles.container}>
-      <h1>Resultados: </h1>
+      <h1>Resultados</h1>
+
       {loading && <p>Carregando resultados...</p>}
 
-      {!loading && winners.length === 0 && <p>Nenhum voto encontrado</p>}
+      {!loading && errorMessage && (
+        <p className={styles.error}>{errorMessage}</p>
+      )}
 
-      {!loading &&
-        winners.map((winner) => (
-          <div key={winner.category_id}>
-            <h3>Categoria: {winner.category_title}</h3>
-            <p>
-              Vencedor: <strong>{winner.option_name}</strong> com{" "}
-              {winner.vote_count} votos
-            </p>
-          </div>
-        ))}
+      {!loading && !errorMessage && winners.length === 0 && (
+        <p>Nenhum resultado disponível ainda.</p>
+      )}
+
+      {!loading && !errorMessage && winners.length > 0 && (
+        <div className={styles.resultsList}>
+          {winners.map((winner) => (
+            <div key={winner.category_id} className={styles.resultCard}>
+              <h3 className={styles.categoryTitle}>
+                Categoria: {winner.category_title}
+              </h3>
+
+              {/* ✅ Não mostramos quantidade de votos na nova versão */}
+              <p className={styles.winnerText}>
+                Vencedor: <strong>{winner.option_name}</strong>
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && (
+        <button className={styles.refreshBtn} onClick={fetchWinners}>
+          Atualizar
+        </button>
+      )}
     </div>
   );
 }
