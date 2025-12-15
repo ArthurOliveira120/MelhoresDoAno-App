@@ -1,27 +1,24 @@
-import { createContext, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+// src/context/SessionContext.tsx
+import { createContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase";
 
-type SessionMessage = string | null;
-type SessionError = string | null;
-
-type Profile = {
-  user_id: string;
-  participant_id: number | null; // participants.id é int8 -> em TS fica number
+export type Profile = {
+  id: string; // uuid (auth.users.id)
+  participant_id: number | null; // int8
   is_admin: boolean;
 };
 
-type SessionContextType = {
+export type SessionContextType = {
   session: Session | null;
-  sessionLoading: boolean;
-  sessionMessage: SessionMessage;
-  sessionError: SessionError;
-
-  // infos úteis pro app (sem expor votos):
   profile: Profile | null;
-  participantId: number | null;
+
   isAdmin: boolean;
+  participantId: number | null;
+
+  sessionLoading: boolean;
+  sessionMessage: string | null;
+  sessionError: string | null;
 
   handleSignUp: (email: string, password: string, username: string) => Promise<void>;
   handleSignIn: (email: string, password: string) => Promise<void>;
@@ -30,138 +27,139 @@ type SessionContextType = {
 
 export const SessionContext = createContext<SessionContextType>({
   session: null,
+  profile: null,
+
+  isAdmin: false,
+  participantId: null,
+
   sessionLoading: false,
   sessionMessage: null,
   sessionError: null,
-
-  profile: null,
-  participantId: null,
-  isAdmin: false,
 
   handleSignUp: async () => {},
   handleSignIn: async () => {},
   handleSignOut: async () => {},
 });
 
-type SessionProviderProps = {
+type Props = {
   children: ReactNode;
 };
 
-export function SessionProvider({ children }: SessionProviderProps) {
+export function SessionProvider({ children }: Props) {
   const [session, setSession] = useState<Session | null>(null);
-
-  const [sessionLoading, setSessionLoading] = useState(true);
-  const [sessionMessage, setSessionMessage] = useState<SessionMessage>(null);
-  const [sessionError, setSessionError] = useState<SessionError>(null);
-
   const [profile, setProfile] = useState<Profile | null>(null);
 
-  const participantId = profile?.participant_id ?? null;
-  const isAdmin = profile?.is_admin ?? false;
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
-  // Busca perfil + cria registro se não existir (primeiro login)
-  async function ensureProfileForUser(userId: string, fallbackName: string) {
-    // 1) tenta pegar profile existente
-    const { data: existing, error: existingErr } = await supabase
+  const isAdmin = profile?.is_admin ?? false;
+  const participantId = profile?.participant_id ?? null;
+
+  async function fetchProfile(userId: string) {
+    const { data, error } = await supabase
       .from("profiles")
-      .select("user_id, participant_id, is_admin")
-      .eq("user_id", userId)
+      .select("id, participant_id, is_admin")
+      .eq("id", userId)
       .maybeSingle();
 
-    if (existingErr) throw existingErr;
+    if (error) throw error;
+    return (data ?? null) as Profile | null;
+  }
 
+  async function ensureProfile(userId: string, usernameFallback: string) {
+    // 1) tenta buscar profile
+    const existing = await fetchProfile(userId);
     if (existing) {
       setProfile(existing);
       return;
     }
 
-    // 2) se não existe, cria participant
-    const { data: createdParticipant, error: participantErr } = await supabase
+    // 2) cria participant
+    const { data: participant, error: participantError } = await supabase
       .from("participants")
-      .insert({ name: fallbackName })
+      .insert({ name: usernameFallback })
       .select("id")
       .single();
 
-    if (participantErr) throw participantErr;
+    if (participantError) throw participantError;
 
-    // 3) cria profile ligando auth user -> participants.id
-    const { data: createdProfile, error: profileErr } = await supabase
+    // 3) cria profile
+    const { data: createdProfile, error: profileError } = await supabase
       .from("profiles")
       .insert({
-        user_id: userId,
-        participant_id: createdParticipant.id,
+        id: userId,
+        participant_id: participant.id,
         is_admin: false,
       })
-      .select("user_id, participant_id, is_admin")
+      .select("id, participant_id, is_admin")
       .single();
 
-    if (profileErr) throw profileErr;
+    if (profileError) throw profileError;
 
-    setProfile(createdProfile);
-  }
-
-  async function loadSessionAndProfile() {
-    setSessionLoading(true);
-    setSessionError(null);
-
-    try {
-      const {
-        data: { session: currentSession },
-        error,
-      } = await supabase.auth.getSession();
-
-      if (error) throw error;
-
-      setSession(currentSession ?? null);
-
-      // se tem sessão, tenta carregar/criar profile
-      if (currentSession?.user?.id) {
-        const usernameFromMeta =
-          (currentSession.user.user_metadata?.username as string | undefined) ??
-          (currentSession.user.email?.split("@")[0] ?? "Participante");
-
-        await ensureProfileForUser(currentSession.user.id, usernameFromMeta);
-      } else {
-        setProfile(null);
-      }
-    } catch (err: any) {
-      setSession(null);
-      setProfile(null);
-      setSessionError(err?.message ?? "Error loading session");
-    } finally {
-      setSessionLoading(false);
-    }
+    setProfile(createdProfile as Profile);
   }
 
   useEffect(() => {
-    // carrega ao abrir o app
-    loadSessionAndProfile();
+    async function getSession() {
+      setSessionLoading(true);
+      setSessionError(null);
 
-    // escuta mudanças de auth
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        const currentSession = data.session ?? null;
+        setSession(currentSession);
+
+        if (!currentSession?.user?.id) {
+          setProfile(null);
+          return;
+        }
+
+        const username =
+          (currentSession.user.user_metadata?.username as string | undefined) ??
+          currentSession.user.email?.split("@")[0] ??
+          "Participante";
+
+        await ensureProfile(currentSession.user.id, username);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Erro ao buscar sessão";
+        setSession(null);
+        setProfile(null);
+        setSessionError(message);
+      } finally {
+        setSessionLoading(false);
+      }
+    }
+
+    getSession();
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession ?? null);
 
-      // quando muda sessão, atualiza profile
-      if (newSession?.user?.id) {
-        const usernameFromMeta =
-          (newSession.user.user_metadata?.username as string | undefined) ??
-          (newSession.user.email?.split("@")[0] ?? "Participante");
+      if (!newSession?.user?.id) {
+        setProfile(null);
+        return;
+      }
 
-        try {
-          await ensureProfileForUser(newSession.user.id, usernameFromMeta);
-        } catch (err: any) {
-          setProfile(null);
-          setSessionError(err?.message ?? "Error loading profile");
-        }
-      } else {
+      const username =
+        (newSession.user.user_metadata?.username as string | undefined) ??
+        newSession.user.email?.split("@")[0] ??
+        "Participante";
+
+      try {
+        await ensureProfile(newSession.user.id, username);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Erro ao carregar perfil";
+        setSessionError(message);
         setProfile(null);
       }
     });
 
     return () => subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSignUp(email: string, password: string, username: string) {
@@ -183,13 +181,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       if (error) throw error;
 
-      // Em muitos casos não vem sessão imediata (confirmação por email).
-      // Só avisamos e pronto — o profile será criado no primeiro login confirmado.
       if (data.user) {
-        setSessionMessage("Cadastro feito! Confirma seu email e depois faça login.");
+        setSessionMessage("Cadastro realizado! Verifique seu email.");
+        window.location.href = "/signin";
       }
-    } catch (err: any) {
-      setSessionError(err?.message ?? "Error on sign up");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro no cadastro";
+      setSessionError(message);
     } finally {
       setSessionLoading(false);
     }
@@ -208,20 +206,21 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       if (error) throw error;
 
-      setSession(data.session ?? null);
+      if (data.session) {
+        setSession(data.session);
 
-      // garante profile ao logar
-      if (data.session?.user?.id) {
-        const usernameFromMeta =
+        const username =
           (data.session.user.user_metadata?.username as string | undefined) ??
-          (data.session.user.email?.split("@")[0] ?? "Participante");
+          data.session.user.email?.split("@")[0] ??
+          "Participante";
 
-        await ensureProfileForUser(data.session.user.id, usernameFromMeta);
+        await ensureProfile(data.session.user.id, username);
+
+        setSessionMessage("Login realizado com sucesso.");
       }
-
-      setSessionMessage("Login realizado.");
-    } catch (err: any) {
-      setSessionError(err?.message ?? "Error on sign in");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro no login";
+      setSessionError(message);
     } finally {
       setSessionLoading(false);
     }
@@ -238,29 +237,33 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       setSession(null);
       setProfile(null);
+
+      // mantém seu estilo “direto”
       window.location.href = "/";
-    } catch (err: any) {
-      setSessionError(err?.message ?? "Error on sign out");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro ao sair";
+      setSessionError(message);
     } finally {
       setSessionLoading(false);
     }
   }
 
-  const value = useMemo<SessionContextType>(
-    () => ({
-      session,
-      sessionLoading,
-      sessionMessage,
-      sessionError,
-      profile,
-      participantId,
-      isAdmin,
-      handleSignUp,
-      handleSignIn,
-      handleSignOut,
-    }),
-    [session, sessionLoading, sessionMessage, sessionError, profile, participantId, isAdmin]
-  );
+  const contextValue: SessionContextType = {
+    session,
+    profile,
+    isAdmin,
+    participantId,
+    sessionLoading,
+    sessionMessage,
+    sessionError,
+    handleSignUp,
+    handleSignIn,
+    handleSignOut,
+  };
 
-  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+  return (
+    <SessionContext.Provider value={contextValue}>
+      {children}
+    </SessionContext.Provider>
+  );
 }

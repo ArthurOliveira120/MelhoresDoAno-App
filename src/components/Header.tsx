@@ -17,12 +17,16 @@ export function Header({ title }: Props) {
 
       {session && (
         <>
-        <p>Olá, {session.user.user_metadata.username}</p>
-        <button onClick={handleSignOut} className={styles.logoutBtn}>
-          Log Out
-        </button>
+          <p>Olá, {session.user.user_metadata.username}</p>
+          <button
+            onClick={async () => {
+              await handleSignOut();
+            }}
+            className={styles.logoutBtn}
+          >
+            Log Out
+          </button>
         </>
-        
       )}
     </header>
   );

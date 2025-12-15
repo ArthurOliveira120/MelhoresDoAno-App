@@ -3,5 +3,11 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  "compilerOptions": {
+    "jsx": "react-jsx", // ou "react" se for versão mais antiga
+    "strict": true, // boas práticas de tipo
+    "moduleResolution": "node", // boa resolução de módulos
+    "esModuleInterop": true // compatibilidade com importações
+  }
 }

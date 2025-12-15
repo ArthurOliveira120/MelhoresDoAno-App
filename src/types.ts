@@ -3,9 +3,19 @@ import type { Session } from "@supabase/supabase-js";
 export interface Category {
   id: number;
   title: string;
-  // se você realmente tiver "order" no banco, mantenha.
-  // order?: number;
+  order: number;
 }
+
+export type Winner = {
+  category_id: number;
+  category_title: string;
+
+  option_id: number;
+  option_name: string;
+
+  vote_count: number;
+};
+
 
 export interface Option {
   id: number;

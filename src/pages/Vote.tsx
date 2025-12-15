@@ -19,17 +19,9 @@ type SessionStateRow = {
   phase?: "lobby" | "voting" | "results" | string;
 };
 
-type ProfileRow = {
-  role: "admin" | "participant" | string;
-  participant_id: number | null;
-};
-
 export function Vote() {
   const navigate = useNavigate();
-
-  const { session } = useContext(SessionContext);
-
-  const [participantId, setParticipantId] = useState<number | null>(null);
+  const { session, participantId, isAdmin } = useContext(SessionContext);
 
   const [state, setState] = useState<SessionStateRow | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
@@ -39,80 +31,66 @@ export function Vote() {
   const [hasVoted, setHasVoted] = useState(false);
   const [waitingNext, setWaitingNext] = useState(false);
 
-  const phase = state?.phase ?? (category?.id === 0 ? "lobby" : "voting");
+  const [loading, setLoading] = useState(true);
 
-  // ✅ Se não estiver logado, manda pro signin
+  // ✅ fase mais confiável: primeiro pelo state, senão pelo category_id
+  const effectivePhase =
+    state?.phase ??
+    (state?.current_category_id === 0 ? "lobby" : category?.id === 0 ? "lobby" : "voting");
+
+  const isLobby = effectivePhase === "lobby" || state?.current_category_id === 0;
+  const isVoting = effectivePhase === "voting" && (state?.current_category_id ?? 0) !== 0;
+  const isResults = effectivePhase === "results";
+
+  // ✅ protege rota: sem sessão -> signin
   useEffect(() => {
     if (!session) {
       navigate("/signin");
     }
   }, [session, navigate]);
 
-  // ✅ Pega participant_id do profiles (não usa localStorage, não usa participants)
+  // ✅ admin não vota
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!session) return;
+    if (isAdmin) navigate("/host");
+  }, [session, isAdmin, navigate]);
 
-    let cancelled = false;
-
-    async function loadProfile() {
-      if (!session) return;
-      
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role, participant_id")
-        .eq("id", session.user.id)
-        .single();
-
-      if (cancelled) return;
-
-      if (error || !data) {
-        console.error("Vote: erro ao buscar profile:", error);
-        // fallback: manda pro login
-        navigate("/signin");
-        return;
-      }
-
-      const profile = data as ProfileRow;
-
-      // Se alguém cair aqui como admin, manda pro host
-      if (profile.role === "admin") {
-        navigate("/host");
-        return;
-      }
-
-      if (!profile.participant_id) {
-        console.error("Vote: participant_id vazio no profile.");
-        // você pode decidir outra rota, mas aqui é melhor voltar pro login
-        navigate("/signin");
-        return;
-      }
-
-      setParticipantId(profile.participant_id);
-    }
-
-    loadProfile();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session, navigate]);
-
-  // ✅ Carrega estado + categoria + opções e assina realtime apenas do session_state
   useEffect(() => {
+    // só inicializa de verdade quando há sessão e não é admin
+    if (!session) return;
+    if (isAdmin) return;
+
     let cancelled = false;
 
     async function init() {
+      setLoading(true);
+
       const s = await fetchSessionState();
       if (cancelled) return;
-      if (!s) return;
+
+      if (!s) {
+        setState(null);
+        setCategory(null);
+        setOptions([]);
+        setLoading(false);
+        return;
+      }
 
       setState(s);
-      await loadCategoryAndOptions(s.current_category_id);
 
-      // reset de UI
+      // ✅ se for lobby (categoria 0), não tenta buscar categories/options
+      if (s.current_category_id === 0) {
+        setCategory({ id: 0, title: "Waiting", order: 0 });
+        setOptions([]);
+      } else {
+        await loadCategoryAndOptions(s.current_category_id);
+      }
+
       setHasVoted(false);
       setSelectedOptionId(null);
       setWaitingNext(false);
+
+      setLoading(false);
     }
 
     init();
@@ -128,9 +106,14 @@ export function Vote() {
           if (!s) return;
 
           setState(s);
-          await loadCategoryAndOptions(s.current_category_id);
 
-          // Quando muda categoria/fase, “reseta” a tela do participante
+          if (s.current_category_id === 0) {
+            setCategory({ id: 0, title: "Waiting", order: 0 });
+            setOptions([]);
+          } else {
+            await loadCategoryAndOptions(s.current_category_id);
+          }
+
           setHasVoted(false);
           setSelectedOptionId(null);
           setWaitingNext(false);
@@ -142,28 +125,33 @@ export function Vote() {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [session, isAdmin]);
 
+  // ✅ MESMA correção do Host: pegar “a primeira linha”, não single()
   async function fetchSessionState() {
     const { data, error } = await supabase
       .from("session_state")
       .select("id, current_category_id, locked, phase")
-      .single();
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
     if (error) {
       console.error("Vote: erro ao buscar session_state:", error);
       return null;
     }
 
-    return data as SessionStateRow;
+    return (data ?? null) as SessionStateRow | null;
   }
 
   async function loadCategoryAndOptions(categoryId: number) {
-    const [{ data: categoryData, error: categoryErr }, { data: optionsData, error: optionsErr }] =
-      await Promise.all([
-        supabase.from("categories").select("*").eq("id", categoryId).single(),
-        supabase.from("options").select("*").eq("category_id", categoryId),
-      ]);
+    const [
+      { data: categoryData, error: categoryErr },
+      { data: optionsData, error: optionsErr },
+    ] = await Promise.all([
+      supabase.from("categories").select("*").eq("id", categoryId).maybeSingle(),
+      supabase.from("options").select("*").eq("category_id", categoryId),
+    ]);
 
     if (categoryErr) console.error("Vote: erro ao buscar categoria:", categoryErr);
     if (optionsErr) console.error("Vote: erro ao buscar opções:", optionsErr);
@@ -173,13 +161,13 @@ export function Vote() {
   }
 
   async function submitVote() {
-    // regras básicas do front (o RLS é a regra real)
     if (!session) return;
+    if (!participantId) return; // ainda carregando profile
     if (hasVoted || waitingNext) return;
     if (!selectedOptionId || !category) return;
-    if (!participantId) return;
-    if (phase !== "voting") return;
-    if (state?.locked) return;
+    if (!state) return;
+    if (effectivePhase !== "voting") return;
+    if (state.locked) return;
 
     const { error } = await supabase.from("votes").insert({
       participant_id: participantId,
@@ -193,9 +181,7 @@ export function Vote() {
       return;
     }
 
-    // ✅ Se você criou UNIQUE(participant_id, category_id),
-    // quando tentar votar duas vezes vai cair aqui.
-    // Postgres duplicate key -> code "23505"
+    // ✅ se já votou (unique constraint), a gente só trata como “já foi”
     if ((error as any)?.code === "23505") {
       setHasVoted(true);
       setWaitingNext(true);
@@ -206,14 +192,32 @@ export function Vote() {
     alert("Deu algum erro, tenta de novo.");
   }
 
-  // telas de estado
-  const isLobby = phase === "lobby" || category?.id === 0;
-  const isVoting = phase === "voting" && category?.id !== 0;
-  const isResults = phase === "results";
+  // loading global (evita tela “vazia” quando dá refresh)
+  if (loading) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.centerBox}>
+          <h1>Carregando…</h1>
+          <p>Preparando sua sessão de votação.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // se tem sessão mas ainda não tem participantId (profile ainda criando)
+  if (session && !isAdmin && !participantId) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.centerBox}>
+          <h1>Carregando…</h1>
+          <p>Preparando seu perfil.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>
-      {/* LOBBY */}
       {isLobby && (
         <div className={styles.centerBox}>
           <h1>Esperando começar…</h1>
@@ -221,18 +225,13 @@ export function Vote() {
         </div>
       )}
 
-      {/* RESULTS */}
       {isResults && (
         <div className={styles.centerBox}>
           <h1>Resultados</h1>
-          <p>
-            Os resultados estão sendo exibidos na tela principal. Aguarde a próxima
-            categoria 😊
-          </p>
+          <p>Os resultados estão na tela principal. Aguarde a próxima categoria 😊</p>
         </div>
       )}
 
-      {/* VOTING */}
       {isVoting && (
         <>
           <Header title={category?.title || "Carregando…"} />
@@ -268,7 +267,7 @@ export function Vote() {
                 hasVoted ||
                 waitingNext ||
                 !!state?.locked ||
-                phase !== "voting"
+                effectivePhase !== "voting"
               }
               message={state?.locked ? "Votação bloqueada" : "Enviar voto"}
             />

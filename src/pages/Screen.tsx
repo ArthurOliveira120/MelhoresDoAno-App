@@ -1,49 +1,62 @@
 import styles from "./Screen.module.css";
-import { useEffect, useState } from "react";
-import { supabase } from "../utils/supabase";
 
-type SessionStateRow = {
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../utils/supabase";
+import type { Category, Winner } from "../types";
+
+type SessionState = {
   id: number;
   current_category_id: number;
   locked: boolean;
-  phase: "lobby" | "voting" | "results" | string;
-};
-
-type Category = {
-  id: number;
-  title: string;
-};
-
-type Option = {
-  id: number;
-  category_id: number;
-  name: string;
-};
-
-type Top3Row = {
-  option_id: number;
-  option_name: string;
-  total_votes: number;
+  phase?: "lobby" | "voting" | "results" | string;
 };
 
 export function Screen() {
-  const [state, setState] = useState<SessionStateRow | null>(null);
+  const [state, setState] = useState<SessionState | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
-  const [options, setOptions] = useState<Option[]>([]);
-  const [top3, setTop3] = useState<Top3Row[]>([]);
+  const [winners, setWinners] = useState<Winner[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const currentCategoryId = state?.current_category_id ?? 0;
+
+  const phase = useMemo(() => {
+    // se tiver phase no banco, usa; senão deduz pelo category_id
+    if (state?.phase) return state.phase;
+    return currentCategoryId === 0 ? "lobby" : "voting";
+  }, [state?.phase, currentCategoryId]);
+
+  const isLobby = phase === "lobby" || currentCategoryId === 0;
+  const isVoting = phase === "voting" && currentCategoryId !== 0;
+  const isResults = phase === "results" && currentCategoryId !== 0;
 
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
       setLoading(true);
+
       const s = await fetchSessionState();
       if (cancelled) return;
 
-      if (s) {
-        setState(s);
-        await loadScreenData(s);
+      setState(s);
+
+      if (!s) {
+        setCategory(null);
+        setWinners([]);
+        setLoading(false);
+        return;
+      }
+
+      if (s.current_category_id === 0) {
+        setCategory({ id: 0, title: "Waiting", order: 0 });
+        setWinners([]);
+      } else {
+        await loadCategory(s.current_category_id);
+        if (s.phase === "results") {
+          await loadWinners(s.current_category_id);
+        } else {
+          setWinners([]);
+        }
       }
 
       setLoading(false);
@@ -51,19 +64,35 @@ export function Screen() {
 
     init();
 
-    // ✅ A TV escuta somente mudanças no session_state
     const channel = supabase
-      .channel("realtime-screen-session-state")
+      .channel("realtime-screen")
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "session_state" },
+        { event: "*", schema: "public", table: "session_state" },
         async () => {
           const s = await fetchSessionState();
           if (cancelled) return;
 
-          if (s) {
-            setState(s);
-            await loadScreenData(s);
+          setState(s);
+
+          if (!s) {
+            setCategory(null);
+            setWinners([]);
+            return;
+          }
+
+          if (s.current_category_id === 0) {
+            setCategory({ id: 0, title: "Waiting", order: 0 });
+            setWinners([]);
+            return;
+          }
+
+          await loadCategory(s.current_category_id);
+
+          if (s.phase === "results") {
+            await loadWinners(s.current_category_id);
+          } else {
+            setWinners([]);
           }
         }
       )
@@ -75,45 +104,27 @@ export function Screen() {
     };
   }, []);
 
-  async function fetchSessionState() {
+  async function fetchSessionState(): Promise<SessionState | null> {
     const { data, error } = await supabase
       .from("session_state")
       .select("id, current_category_id, locked, phase")
-      .single();
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
     if (error) {
       console.error("Screen: erro ao buscar session_state:", error);
       return null;
     }
-
-    return data as SessionStateRow;
-  }
-
-  async function loadScreenData(s: SessionStateRow) {
-    // sempre limpa o que não for do modo atual
-    setTop3([]);
-
-    // Categoria 0 = lobby (pode manter isso por enquanto)
-    // Se você já adicionou phase, ele vira a regra principal.
-    const categoryId = s.current_category_id;
-
-    // Se estiver mostrando resultados -> pega Top3 via RPC
-    if (s.phase === "results") {
-      await loadCategory(categoryId);
-      await loadTop3(categoryId);
-      return;
-    }
-
-    // Lobby ou Voting -> mostra categoria e opções
-    await Promise.all([loadCategory(categoryId), loadOptions(categoryId)]);
+    return (data ?? null) as SessionState | null;
   }
 
   async function loadCategory(categoryId: number) {
     const { data, error } = await supabase
       .from("categories")
-      .select("id, title")
+      .select("*")
       .eq("id", categoryId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("Screen: erro ao buscar categoria:", error);
@@ -121,119 +132,101 @@ export function Screen() {
       return;
     }
 
-    setCategory(data as Category);
+    setCategory((data as Category) ?? null);
   }
 
-  async function loadOptions(categoryId: number) {
+  async function loadWinners(categoryId: number) {
     const { data, error } = await supabase
-      .from("options")
-      .select("id, category_id, name")
+      .from("winners_view")
+      .select("*")
       .eq("category_id", categoryId)
-      .order("id", { ascending: true });
+      .order("vote_count", { ascending: false })
+      .limit(3);
 
     if (error) {
-      console.error("Screen: erro ao buscar options:", error);
-      setOptions([]);
+      console.error("Screen: erro ao buscar winners:", error);
+      setWinners([]);
       return;
     }
 
-    setOptions((data as Option[]) ?? []);
+    setWinners((data as Winner[]) ?? []);
   }
 
-  async function loadTop3(categoryId: number) {
-    // ✅ Não usa tabela votes; usa RPC segura
-    const { data, error } = await supabase.rpc("get_top3", {
-      category_id_param: categoryId,
-    });
-
-    if (error) {
-      console.error("Screen: erro ao buscar top3:", error);
-      setTop3([]);
-      return;
-    }
-
-    setTop3((data as Top3Row[]) ?? []);
+  if (loading) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.center}>
+          <h1>Carregando…</h1>
+        </div>
+      </div>
+    );
   }
 
-  const phase = state?.phase ?? "lobby";
+  if (!state) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.center}>
+          <h1>Sem sessão ativa</h1>
+          <p>Crie uma linha em <strong>session_state</strong> para iniciar.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <img src="/logo.png" className={styles.logo} alt="Logo" />
-        <div className={styles.headerText}>
-          <h1 className={styles.eventTitle}>Melhores do Ano</h1>
-          <p className={styles.phase}>
-            {phase === "lobby" && "Aguardando participantes..."}
-            {phase === "voting" && "Votação aberta"}
-            {phase === "results" && "Resultados"}
+    <div className={styles.container}>
+      <div className={styles.topBar}>
+        <h1 className={styles.title}>Melhores do Ano</h1>
+        <div className={styles.badge}>
+          {isLobby ? "Aguardando" : isVoting ? "Votação" : "Resultados"}
+        </div>
+      </div>
+
+      {isLobby && (
+        <div className={styles.center}>
+          <h2 className={styles.big}>Esperando todo mundo entrar…</h2>
+          <p className={styles.sub}>
+            Assim que o host iniciar, a categoria vai aparecer aqui.
           </p>
         </div>
-      </header>
+      )}
 
-      {loading && <p className={styles.loading}>Carregando...</p>}
+      {isVoting && (
+        <div className={styles.center}>
+          <h2 className={styles.big}>{category?.title ?? "Categoria"}</h2>
+          <p className={styles.sub}>
+            Votação em andamento. Vote pelo celular.
+          </p>
 
-      {!loading && (
-        <main className={styles.main}>
-          {/* LOBBY */}
-          {phase === "lobby" && (
-            <section className={styles.card}>
-              <h2 className={styles.categoryTitle}>Sala de espera</h2>
-              <p className={styles.bigText}>
-                Entre no site pelo celular e faça login para votar 🎉
-              </p>
-            </section>
+          {state.locked && (
+            <p className={styles.locked}>
+              Votação bloqueada (aguardando host).
+            </p>
+          )}
+        </div>
+      )}
+
+      {isResults && (
+        <div className={styles.center}>
+          <h2 className={styles.big}>{category?.title ?? "Resultados"}</h2>
+          <p className={styles.sub}>Top 3 da categoria</p>
+
+          {winners.length === 0 ? (
+            <p className={styles.sub}>Nenhum voto registrado.</p>
+          ) : (
+            <div className={styles.podium}>
+              {winners.map((w, index) => (
+                <div key={w.option_id} className={styles.podiumItem}>
+                  <div className={styles.position}>{index + 1}º</div>
+                  <div className={styles.name}>{w.option_name}</div>
+                  <div className={styles.votes}>{w.vote_count} votos</div>
+                </div>
+              ))}
+            </div>
           )}
 
-          {/* VOTING */}
-          {phase === "voting" && (
-            <section className={styles.card}>
-              <h2 className={styles.categoryTitle}>
-                {category?.title ?? "Categoria"}
-              </h2>
-
-              <div className={styles.grid}>
-                {options.map((opt) => (
-                  <div key={opt.id} className={styles.optionCard}>
-                    <span className={styles.optionName}>{opt.name}</span>
-                  </div>
-                ))}
-              </div>
-
-              <p className={styles.tip}>
-                Vote no celular. A TV só exibe as informações.
-              </p>
-            </section>
-          )}
-
-          {/* RESULTS */}
-          {phase === "results" && (
-            <section className={styles.card}>
-              <h2 className={styles.categoryTitle}>
-                {category?.title ?? "Categoria"}
-              </h2>
-
-              <div className={styles.podium}>
-                {top3.length === 0 && (
-                  <p className={styles.bigText}>Carregando Top 3...</p>
-                )}
-
-                {top3.map((w, idx) => (
-                  <div key={w.option_id} className={styles.podiumItem}>
-                    <span className={styles.rank}>#{idx + 1}</span>
-                    <span className={styles.winnerName}>{w.option_name}</span>
-                    {/* Se você quiser esconder número de votos na TV também, é só remover essa linha */}
-                    <span className={styles.votes}>{w.total_votes} votos</span>
-                  </div>
-                ))}
-              </div>
-
-              <p className={styles.tip}>
-                O host controla quando exibir os resultados e quando avançar.
-              </p>
-            </section>
-          )}
-        </main>
+          <p className={styles.sub}>Aguardando a próxima categoria…</p>
+        </div>
       )}
     </div>
   );

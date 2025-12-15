@@ -9,7 +9,6 @@ import {
 } from "react";
 
 import { SessionContext } from "../context/SessionContext";
-import { supabase } from "../utils/supabase";
 
 import { Field } from "@base-ui-components/react/field";
 import { Form } from "@base-ui-components/react/form";
@@ -23,11 +22,6 @@ import type { FormValues, FormErrors } from "../types";
 type LoginMode = "signin" | "register";
 type LoginProps = { value: LoginMode };
 
-type Profile = {
-  role: "admin" | "participant" | string;
-  participant_id: number | null;
-};
-
 export function Login({ value }: LoginProps) {
   const {
     handleSignIn,
@@ -36,6 +30,8 @@ export function Login({ value }: LoginProps) {
     sessionLoading,
     sessionMessage,
     sessionError,
+    profile,
+    isAdmin,
   } = useContext(SessionContext);
 
   const navigate = useNavigate();
@@ -43,6 +39,7 @@ export function Login({ value }: LoginProps) {
   const [errors, setErrors] = useState<FormErrors>({});
   const [mode, setMode] = useState<LoginMode>(value);
   const [showPassword, setShowPassword] = useState(false);
+
   const [formValues, setFormValues] = useState<FormValues>({
     email: "",
     password: "",
@@ -50,12 +47,11 @@ export function Login({ value }: LoginProps) {
     username: "",
   });
 
-  // ✅ Sincroniza modo (signin/register)
   useEffect(() => {
     setMode(value);
   }, [value]);
 
-  // ✅ Toasts
+  // Toasts
   useEffect(() => {
     if (sessionMessage) {
       toast.success(sessionMessage, {
@@ -68,74 +64,33 @@ export function Login({ value }: LoginProps) {
         style: { fontSize: "1.5rem" },
         transition: Bounce,
       });
-    } else if (sessionError) {
-      if (sessionError === "Email not confirmed") {
-        toast.info(sessionError, {
-          position: "top-center",
-          autoClose: 5000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: false,
-          progress: undefined,
-          style: { fontSize: "1.5rem" },
-          transition: Bounce,
-        });
-      } else {
-        toast.error(sessionError, {
-          position: "top-center",
-          autoClose: 5000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: false,
-          progress: undefined,
-          style: { fontSize: "1.5rem" },
-          transition: Bounce,
-        });
-      }
+      return;
+    }
+
+    if (sessionError) {
+      const fn = sessionError === "Email not confirmed" ? toast.info : toast.error;
+      fn(sessionError, {
+        position: "top-center",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: false,
+        progress: undefined,
+        style: { fontSize: "1.5rem" },
+        transition: Bounce,
+      });
     }
   }, [sessionMessage, sessionError]);
 
-  // ✅ Redirecionamento baseado em profiles.role (não usa metadata)
+  // ✅ Redireciona APENAS quando: não está carregando + tem sessão + tem profile
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (sessionLoading) return;
+    if (!session) return;
+    if (!profile) return;
 
-    let cancelled = false;
-
-    async function redirectByRole() {
-      if (!session) return;
-      
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role, participant_id")
-        .eq("id", session.user.id)
-        .single();
-
-      if (cancelled) return;
-
-      if (error || !data) {
-        // Se não existir profile, você pode decidir um fallback:
-        // - mandar pro vote
-        // - ou mostrar erro
-        console.error("Erro ao buscar profile:", error);
-        navigate("/vote");
-        return;
-      }
-
-      const profile = data as Profile;
-
-      if (profile.role === "admin") {
-        navigate("/host");
-      } else {
-        navigate("/vote");
-      }
-    }
-
-    redirectByRole();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session, navigate]);
+    if (isAdmin) navigate("/host");
+    else navigate("/vote");
+  }, [sessionLoading, session, profile, isAdmin, navigate]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -148,6 +103,7 @@ export function Login({ value }: LoginProps) {
       if (!formValues.username) newErrors.username = "Username is required";
       if (!formValues.confirmPassword)
         newErrors.confirmPassword = "Confirm Password is required";
+
       if (
         formValues.password &&
         formValues.confirmPassword &&
@@ -162,21 +118,24 @@ export function Login({ value }: LoginProps) {
 
     if (mode === "signin") {
       await handleSignIn(formValues.email, formValues.password);
+
+      // mantém email pra facilitar retry
+      setFormValues((prev) => ({
+        ...prev,
+        password: "",
+      }));
     } else {
-      await handleSignUp(
-        formValues.email,
-        formValues.password,
-        formValues.username
-      );
+      await handleSignUp(formValues.email, formValues.password, formValues.username);
+
+      // no cadastro, limpa tudo
+      setFormValues({
+        email: "",
+        password: "",
+        confirmPassword: "",
+        username: "",
+      });
     }
 
-    setFormValues({
-      email: "",
-      password: "",
-      confirmPassword: "",
-      username: "",
-    });
-    setErrors({});
     setShowPassword(false);
   }
 
@@ -190,12 +149,18 @@ export function Login({ value }: LoginProps) {
 
   const handleTogglePassword = () => setShowPassword((show) => !show);
 
+  // ✅ se tem sessão mas profile ainda não chegou, mostra loading “decente”
+  const showProfileLoading = !!session && !profile && sessionLoading;
+
   return (
     <div className={styles.container}>
       <h1>{mode === "signin" ? "Sign In" : "Register"}</h1>
 
+      {showProfileLoading && (
+        <p className={styles.info}>Carregando perfil…</p>
+      )}
+
       <Form className={styles.form} onSubmit={handleSubmit}>
-        {/* EMAIL */}
         <Field.Root name="email" className={styles.field}>
           <Field.Label className={styles.label}>Email</Field.Label>
           <div className={styles.inputWrapper}>
@@ -207,12 +172,12 @@ export function Login({ value }: LoginProps) {
               onChange={handleInputChange}
               placeholder="Enter your email"
               className={styles.input}
+              disabled={sessionLoading}
             />
           </div>
           {errors.email && <span className={styles.error}>{errors.email}</span>}
         </Field.Root>
 
-        {/* USERNAME (apenas register) */}
         {mode === "register" && (
           <Field.Root name="username" className={styles.field}>
             <Field.Label className={styles.label}>Username</Field.Label>
@@ -225,6 +190,7 @@ export function Login({ value }: LoginProps) {
                 onChange={handleInputChange}
                 placeholder="Enter your username"
                 className={styles.input}
+                disabled={sessionLoading}
               />
             </div>
             {errors.username && (
@@ -233,7 +199,6 @@ export function Login({ value }: LoginProps) {
           </Field.Root>
         )}
 
-        {/* PASSWORD */}
         <Field.Root name="password" className={styles.field}>
           <Field.Label className={styles.label}>Password</Field.Label>
           <div className={styles.inputWrapper}>
@@ -246,6 +211,7 @@ export function Login({ value }: LoginProps) {
               onChange={handleInputChange}
               placeholder="Enter your password"
               className={styles.input}
+              disabled={sessionLoading}
             />
             <button
               type="button"
@@ -254,6 +220,7 @@ export function Login({ value }: LoginProps) {
               aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
               title={showPassword ? "Ocultar senha" : "Mostrar senha"}
               aria-controls="password"
+              disabled={sessionLoading}
             >
               {showPassword ? <EyeOffIcon /> : <EyeIcon />}
             </button>
@@ -263,7 +230,6 @@ export function Login({ value }: LoginProps) {
           )}
         </Field.Root>
 
-        {/* CONFIRM PASSWORD (apenas register) */}
         {mode === "register" && (
           <Field.Root name="confirmPassword" className={styles.field}>
             <Field.Label className={styles.label}>Confirm Password</Field.Label>
@@ -276,6 +242,7 @@ export function Login({ value }: LoginProps) {
                 onChange={handleInputChange}
                 placeholder="Confirm your password"
                 className={styles.input}
+                disabled={sessionLoading}
               />
               <button
                 type="button"
@@ -284,6 +251,7 @@ export function Login({ value }: LoginProps) {
                 aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 title={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 aria-controls="password"
+                disabled={sessionLoading}
               >
                 {showPassword ? <EyeOffIcon /> : <EyeIcon />}
               </button>
@@ -294,19 +262,12 @@ export function Login({ value }: LoginProps) {
           </Field.Root>
         )}
 
-        <button
-          type="submit"
-          className={styles.button}
-          disabled={sessionLoading}
-        >
+        <button type="submit" className={styles.button} disabled={sessionLoading}>
           {sessionLoading ? (
             <CircularProgress
               size={24}
               thickness={4}
-              sx={{
-                color: "var(--primary-contrast)",
-                marginLeft: "1rem",
-              }}
+              sx={{ color: "var(--primary-contrast)", marginLeft: "1rem" }}
             />
           ) : mode === "signin" ? (
             "Sign In"
@@ -317,12 +278,13 @@ export function Login({ value }: LoginProps) {
       </Form>
 
       {mode === "register" && (
-        <button onClick={() => setMode("signin")} className={styles.info}>
+        <button onClick={() => setMode("signin")} className={styles.info} disabled={sessionLoading}>
           Already have an account? Click here!
         </button>
       )}
+
       {mode === "signin" && (
-        <button onClick={() => setMode("register")} className={styles.info}>
+        <button onClick={() => setMode("register")} className={styles.info} disabled={sessionLoading}>
           Don't have an account? Click here!
         </button>
       )}
