@@ -112,7 +112,7 @@ export function Host() {
         .from("session_state")
         .update({
           current_category_id: next.id,
-          locked: false,
+          phase: "vote",
         })
         .eq("id", 1);
 
@@ -122,7 +122,7 @@ export function Host() {
         .from("session_state")
         .update({
           current_category_id: allCategories[0].id,
-          locked: false,
+          phase: "vote",
         })
         .eq("id", 1);
 
@@ -130,12 +130,20 @@ export function Host() {
     }
   }
 
+  async function showResults() {
+    await supabase
+      .from("session_state")
+      .update({ phase: "results" })
+      .eq("id", 1);
+
+    loadSessionAndVotes();
+  }
+
   async function resetCategoryId() {
     await supabase
       .from("session_state")
       .update({
         current_category_id: 0,
-        locked: false,
       })
       .eq("id", 1);
     loadSessionAndVotes();
@@ -165,6 +173,7 @@ export function Host() {
               disabled={!canAdvance}
               onClick={advanceCategory}
             />
+            <Button message="Mostrar resultados" onClick={showResults} />
             <Button message="Reset" onClick={resetCategoryId} />
             <Button
               message="Force advance"

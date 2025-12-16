@@ -1,0 +1,149 @@
+.container {
+  min-height: 100vh;
+  width: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.centerBox {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 32px;
+}
+
+.centerBox h1 {
+  font-size: 48px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.centerBox h2 {
+  font-size: 36px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.centerBox p {
+  margin: 12px 0 0;
+  font-size: 20px;
+  opacity: 0.85;
+}
+
+/* Caixa principal (vote/results) */
+.panel {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.phaseTitle {
+  margin: 0 0 18px;
+  font-size: 28px;
+  letter-spacing: 0.3px;
+  opacity: 0.9;
+}
+
+/* Lista de opções (modo vote) */
+.optionList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.optionItem {
+  padding: 18px 18px;
+  border-radius: 14px;
+  font-size: 26px;
+  line-height: 1.2;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 74px;
+}
+
+/* Ranking (modo results) */
+.ranking {
+  margin: 0;
+  padding: 0;
+  list-style-position: inside;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rankingItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  padding: 18px 18px;
+  border-radius: 14px;
+
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.rankLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  min-width: 0;
+}
+
+.rankNumber {
+  font-size: 28px;
+  font-weight: 800;
+  opacity: 0.95;
+  white-space: nowrap;
+}
+
+.rankName {
+  font-size: 28px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rankVotes {
+  font-size: 22px;
+  font-weight: 700;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+/* Responsivo: TV/celular */
+@media (max-width: 900px) {
+  .optionList {
+    grid-template-columns: 1fr;
+  }
+
+  .centerBox h1 {
+    font-size: 36px;
+  }
+
+  .optionItem {
+    font-size: 22px;
+  }
+
+  .rankNumber,
+  .rankName {
+    font-size: 22px;
+  }
+}

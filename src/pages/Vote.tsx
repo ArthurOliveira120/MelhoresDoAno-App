@@ -20,8 +20,6 @@ export function Vote() {
   const [selectedOptionId, setSelectedOptionId] = useState<number | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [waitingNext, setWaintingNext] = useState(false);
-  const [votesCount, setVotesCount] = useState(0);
-  const [totalParticipants, setTotalParticipants] = useState(0);
 
   useEffect(() => {
     const storedName = localStorage.getItem("participant_name");
@@ -45,27 +43,14 @@ export function Vote() {
           setSelectedOptionId(null);
           setWaintingNext(false);
           fetchCategoryAndOptions();
-          fetchTotalVotesAndParticipants();
         }
       )
       .subscribe();
 
-    const voteChannel = supabase
-      .channel("realtime-votes")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "votes" },
-        () => {
-          fetchTotalVotesAndParticipants();
-        }
-      );
-
     return () => {
       supabase.removeChannel(categoryChannel);
-      supabase.removeChannel(voteChannel);
     };
   }, []);
-
 
   async function fetchParticipantId(participantName: string) {
     const { data: participant } = await supabase
@@ -103,27 +88,6 @@ export function Vote() {
     setOptions(optionsData || []);
   }
 
-  async function fetchTotalVotesAndParticipants() {
-    const { data: state } = await supabase
-      .from("session_state")
-      .select("*")
-      .single();
-
-    if (!state) return;
-
-    const [{ data: voteData }, { data: totalParticipantsData }] =
-      await Promise.all([
-        supabase
-          .from("votes")
-          .select("*")
-          .eq("category_id", state.current_category_id),
-        supabase.from("participants").select("*"),
-      ]);
-
-    setVotesCount(voteData?.length || 0);
-    setTotalParticipants(totalParticipantsData?.length || 0);
-  }
-
   async function submitVote() {
     if (hasVoted || !selectedOptionId || !category || participantId === null)
       return;
@@ -137,8 +101,6 @@ export function Vote() {
     if (!error) {
       setHasVoted(true);
       setWaintingNext(true);
-    } else {
-      alert("Deu algum erro, tenta denovo");
     }
   }
 
@@ -174,17 +136,16 @@ export function Vote() {
               <div className={styles.waitingBox}>
                 <h2>Seu voto foi registrado</h2>
                 <p>Aguardando todos terminarem de votar...</p>
-                <p>
-                  ({votesCount} / {totalParticipants})
-                </p>
               </div>
             )}
 
-            <Button
-              onClick={submitVote}
-              disabled={!selectedOptionId || hasVoted}
-              message="Enviar voto"
-            />
+            {!waitingNext && (
+              <Button
+                onClick={submitVote}
+                disabled={!selectedOptionId || hasVoted}
+                message="Enviar voto"
+              />
+            )}
           </div>
         </>
       )}

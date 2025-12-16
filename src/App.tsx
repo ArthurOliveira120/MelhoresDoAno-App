@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Home } from "./pages/Home";
 import { Host } from "./pages/Host";
 import { Vote } from "./pages/Vote";
-import { Results } from "./pages/Results";
+import { Screen } from "./pages/Screen";
 
 export default function App() {
   return (
@@ -15,7 +15,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/host" element={<Host />} />
         <Route path="/vote" element={<Vote />} />
-        <Route path="/results" element={<Results />} />
+        <Route path="/screen" element={<Screen />} />
       </Routes>
     </BrowserRouter>
   );
