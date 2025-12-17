@@ -128,6 +128,28 @@
   white-space: nowrap;
 }
 
+.optionImage {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.optionName {
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rankImage {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+
 /* Responsivo: TV/celular */
 @media (max-width: 900px) {
   .optionList {

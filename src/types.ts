@@ -21,6 +21,7 @@ export interface Option {
   id: number;
   category_id: number;
   name: string;
+  image: string;
 }
 
 export type FormValues = {

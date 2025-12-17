@@ -136,14 +136,25 @@ export function Screen() {
     setTop3(items.slice(0, 3));
   }
 
+  function getOptionImage(optionId: number) {
+    return options.find((o) => o.id === optionId)?.image || null;
+  }
+
   const isWaiting = useMemo(() => category?.id === 0, [category?.id]);
 
   return (
     <div className={styles.container}>
       {isWaiting && (
         <div className={styles.centerBox}>
-          <h1>Esperando começar…</h1>
-          <p>Assim que o host avançar, a categoria aparece aqui.</p>
+          <Header title="Melhores dos Anos" />
+          <h3>Para poder votar, escaneie o QR Code abaixo!</h3>
+
+          <div className={styles.qrcode}>
+            <img src="/QRCodeMDA.png" alt="QR Code votação" />
+            <ul>
+              <li>Quando entrar, NÃO SAIA nem recarregue o site</li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -160,10 +171,18 @@ export function Screen() {
           {!loading && phase === "vote" && (
             <div className={styles.panel}>
               <h2 className={styles.phaseTitle}>Votação aberta</h2>
+
               <ul className={styles.optionList}>
                 {options.map((opt) => (
                   <li key={opt.id} className={styles.optionItem}>
-                    {opt.name}
+                    {opt.image && (
+                      <img
+                        className={styles.optionImage}
+                        src={opt.image}
+                        alt={opt.name}
+                      />
+                    )}
+                    <span className={styles.optionName}>{opt.name}</span>
                   </li>
                 ))}
               </ul>
@@ -182,15 +201,33 @@ export function Screen() {
 
               {top3.length > 0 && (
                 <ol className={styles.ranking}>
-                  {top3.map((item, idx) => (
-                    <li key={item.optionId} className={styles.rankingItem}>
-                      <div className={styles.rankLeft}>
-                        <span className={styles.rankNumber}>{idx + 1}º</span>
-                        <span className={styles.rankName}>{item.name}</span>
-                      </div>
-                      <span className={styles.rankVotes}>{item.votes} votos</span>
-                    </li>
-                  ))}
+                  {top3.map((item, idx) => {
+                    const img = getOptionImage(item.optionId);
+
+                    return (
+                      <li key={item.optionId} className={styles.rankingItem}>
+                        <div className={styles.rankLeft}>
+                          <span className={styles.rankNumber}>{idx + 1}º</span>
+
+                          {img && (
+                            <img
+                              className={styles.rankImage}
+                              src={img}
+                              alt={item.name}
+                            />
+                          )}
+
+                          <span className={styles.rankName}>
+                            {item.name} {idx === 0 && <span>👑</span>}
+                          </span>
+                        </div>
+
+                        <span className={styles.rankVotes}>
+                          {item.votes} votos
+                        </span> 
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
             </div>

@@ -120,15 +120,40 @@ export function Vote() {
             {!waitingNext && (
               <div className={styles.optionsContainer}>
                 {options.map((option) => (
-                  <RadioOption
+                  <div
                     key={option.id}
-                    id={option.id}
-                    label={option.name}
-                    name="voteOption"
-                    disabled={hasVoted}
-                    checked={selectedOptionId === option.id}
-                    onChange={() => setSelectedOptionId(option.id)}
-                  />
+                    onClick={() => !hasVoted && setSelectedOptionId(option.id)}
+                    style={{
+                      cursor: hasVoted ? "default" : "pointer",
+                      display: "flex",
+                      gap: 12,
+                      alignItems: "center",
+                      padding: 10,
+                      borderRadius: 12,
+                    }}
+                  >
+                    {option.image && (
+                      <img
+                        src={option.image}
+                        alt={option.name}
+                        style={{
+                          width: 72,
+                          height: 72,
+                          objectFit: "cover",
+                          borderRadius: 12,
+                        }}
+                      />
+                    )}
+
+                    <RadioOption
+                      id={option.id}
+                      label={option.name}
+                      name="voteOption"
+                      disabled={hasVoted}
+                      checked={selectedOptionId === option.id}
+                      onChange={() => setSelectedOptionId(option.id)}
+                    />
+                  </div>
                 ))}
               </div>
             )}
