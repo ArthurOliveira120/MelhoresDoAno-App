@@ -1,44 +1,50 @@
 import styles from "./Home.module.css";
 
+import { useState } from "react";
+
 import { Header } from "../components/Header";
 import { Button } from "../components/Button";
+
 import { useNavigate } from "react-router-dom";
-import { SessionContext } from "../context/SessionContext";
-import { useContext } from "react";
+
+import { supabase } from "../utils/supabase";
 
 export function Home() {
-  const { session, profile, sessionLoading } = useContext(SessionContext);
+  const [participantName, setParticipantName] = useState("");
   const navigate = useNavigate();
 
-  function handleStart() {
-    // evita clique enquanto ainda está carregando a sessão/profile
-    if (sessionLoading) return;
+  async function insertParticipant() {
+    if (!participantName || participantName === "") return;
 
-    if (!session) {
-      navigate("/signin");
-      return;
-    }
-
-    if (profile?.is_admin) {
-      navigate("/host");
+    const { data: existing } = await supabase
+      .from("participants")
+      .select("*")
+      .eq("name", participantName)
+      .single();
+    if (existing) {
+      alert("Já tem alguém com esse nome, tenta outro man");
     } else {
-      navigate("/vote");
+      await supabase
+        .from("participants")
+        .insert({ name: participantName });
+    localStorage.setItem("participant_name", participantName);
+    navigate("/vote");
     }
   }
 
   return (
     <>
-      <Header title="Melhores dos Anos" />
+      <Header title="Melhores do Ano"></Header>
       <div className={styles.container}>
-        <div>
-          <h1>Bem vindo aos Melhores dos Anos!</h1>
-        </div>
-
-        <Button
-          message={sessionLoading ? "Carregando..." : "Começar"}
-          onClick={handleStart}
-          disabled={sessionLoading}
+        <label><b>Preencha com seu nome</b></label>
+        <input
+          type="text"
+          value={participantName}
+          onChange={(event) => {
+            setParticipantName(event.target.value);
+          }}
         />
+        <Button message="Iniciar" onClick={insertParticipant}></Button>
       </div>
     </>
   );

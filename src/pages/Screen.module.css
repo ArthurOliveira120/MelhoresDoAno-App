@@ -1,167 +1,149 @@
-.page {
+.container {
   min-height: 100vh;
-  background: var(--primary-bg);
-  color: var(--text-light);
-  padding: 2rem;
+  width: 100%;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 20px;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  padding: 1.25rem 1.5rem;
-  background: rgba(18, 26, 43, 0.55);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: 0 12px 28px var(--shadow-box);
-  backdrop-filter: blur(8px);
-}
-
-.logo {
-  width: 5rem;
-  height: 5rem;
-  object-fit: contain;
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
-}
-
-.headerText {
-  text-align: center;
-}
-
-.eventTitle {
-  font-size: clamp(1.6rem, 2.4vw, 2.6rem);
-  margin: 0;
-  text-shadow: 1px 3px 4px var(--shadow-text);
-}
-
-.phase {
-  margin: 0.25rem 0 0;
-  color: var(--text-muted);
-  font-size: clamp(1rem, 1.2vw, 1.2rem);
-}
-
-.loading {
-  text-align: center;
-  font-size: 1.25rem;
-  color: var(--text-muted);
-}
-
-.main {
+.centerBox {
   flex: 1;
-  display: flex;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 32px;
 }
 
-.card {
-  width: min(1100px, 100%);
-  background: rgba(28, 37, 65, 0.55);
-  border: 1px solid var(--border-color);
+.centerBox h1 {
+  font-size: 48px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.centerBox h2 {
+  font-size: 36px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.centerBox p {
+  margin: 12px 0 0;
+  font-size: 20px;
+  opacity: 0.85;
+}
+
+/* Caixa principal (vote/results) */
+.panel {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px;
   border-radius: 18px;
-  padding: 2rem;
-  box-shadow: 0 16px 34px var(--shadow-box);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
 }
 
-.categoryTitle {
-  margin: 0 0 1.25rem;
-  font-size: clamp(1.8rem, 2.6vw, 3rem);
-  text-align: center;
-  text-shadow: 1px 3px 4px var(--shadow-text);
+.phaseTitle {
+  margin: 0 0 18px;
+  font-size: 28px;
+  letter-spacing: 0.3px;
+  opacity: 0.9;
 }
 
-.bigText {
-  font-size: clamp(1.2rem, 1.6vw, 1.8rem);
-  text-align: center;
-  margin: 0.75rem 0 0;
-}
-
-.grid {
-  margin-top: 1.25rem;
+/* Lista de opções (modo vote) */
+.optionList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 16px;
 }
 
-.optionCard {
-  padding: 1.25rem;
-  border-radius: 16px;
-  background: rgba(18, 26, 43, 0.6);
-  border: 1px solid rgba(201, 167, 67, 0.25);
-  box-shadow: 0 10px 22px var(--shadow-box);
+.optionItem {
+  padding: 18px 18px;
+  border-radius: 14px;
+  font-size: 26px;
+  line-height: 1.2;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 92px;
-}
-
-.optionName {
-  font-size: clamp(1.2rem, 1.6vw, 2rem);
   text-align: center;
+  min-height: 74px;
 }
 
-.tip {
-  margin-top: 1.5rem;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 1.05rem;
+/* Ranking (modo results) */
+.ranking {
+  margin: 0;
+  padding: 0;
+  list-style-position: inside;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.podium {
-  margin-top: 1.25rem;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+.rankingItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  padding: 18px 18px;
+  border-radius: 14px;
+
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.podiumItem {
-  background: rgba(18, 26, 43, 0.6);
-  border: 1px solid rgba(201, 167, 67, 0.35);
-  border-radius: 18px;
-  padding: 1.5rem;
-  text-align: center;
-  box-shadow: var(--shadow-gold);
+.rankLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  min-width: 0;
 }
 
-.rank {
-  display: inline-block;
-  font-size: 1.4rem;
+.rankNumber {
+  font-size: 28px;
   font-weight: 800;
-  color: var(--accent-gold);
-  margin-bottom: 0.5rem;
+  opacity: 0.95;
+  white-space: nowrap;
 }
 
-.winnerName {
-  display: block;
-  font-size: clamp(1.2rem, 1.7vw, 2.2rem);
-  font-weight: 800;
-  margin-top: 0.25rem;
+.rankName {
+  font-size: 28px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.votes {
-  display: block;
-  margin-top: 0.6rem;
-  color: var(--text-muted);
-  font-size: 1.05rem;
+.rankVotes {
+  font-size: 22px;
+  font-weight: 700;
+  opacity: 0.9;
+  white-space: nowrap;
 }
 
-@media (max-width: 820px) {
-  .page {
-    padding: 1rem;
-  }
-
-  .header {
-    flex-direction: column;
-  }
-
-  .grid {
+/* Responsivo: TV/celular */
+@media (max-width: 900px) {
+  .optionList {
     grid-template-columns: 1fr;
   }
 
-  .podium {
-    grid-template-columns: 1fr;
+  .centerBox h1 {
+    font-size: 36px;
+  }
+
+  .optionItem {
+    font-size: 22px;
+  }
+
+  .rankNumber,
+  .rankName {
+    font-size: 22px;
   }
 }
