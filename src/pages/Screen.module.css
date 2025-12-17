@@ -169,3 +169,7 @@
     font-size: 22px;
   }
 }
+
+.qrcode {
+  margin: 2rem 0;
+}

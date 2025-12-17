@@ -151,9 +151,7 @@ export function Screen() {
 
           <div className={styles.qrcode}>
             <img src="/QRCodeMDA.png" alt="QR Code votação" />
-            <ul>
-              <li>Quando entrar, NÃO SAIA nem recarregue o site</li>
-            </ul>
+            <p>Quando entrar, NÃO SAIA NEM RECARREGUE A PÁGINA</p>
           </div>
         </div>
       )}
